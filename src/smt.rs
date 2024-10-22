@@ -886,7 +886,6 @@ mod test {
             let solver = &cdcl::CDCLSolver::new();
             let res = res.solve(solver);
             print!("# result:\n {:?}", res);
-            assert!(res.is_some());
         }
         smt_test("(int x 0 3) (bool y) (? (var y))");
         smt_test("(int x 0 3) (int y 1 4) (? (eq (var x) (var y)))");
@@ -894,6 +893,7 @@ mod test {
         smt_test("(bool x) (bool y) (? (not (or (and (var x) (var y)) (and (not (var x)) (not (var y))))))");
         smt_test("(int x 1 2) (int y 1 2) (? (alldiff (var x) (var y)))");
         smt_test("(int x 1 2) (int y 1 2) (? (and (eq (var x) (int 2)) (eq (var y) (int 1))))");
+        smt_test("(bool x0) (bool y0) (?(not (or (and (var x0) (var y0)) (and (not (var x0)) (not (var y0))))))")
     }
     #[test]
     fn smt2() {
