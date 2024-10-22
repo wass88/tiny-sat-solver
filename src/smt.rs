@@ -1,4 +1,5 @@
 use core::panic;
+use sat::SATSolver;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
@@ -59,7 +60,7 @@ struct SExpr {
 }
 
 #[derive(Debug, Clone)]
-struct SMT2 {
+pub struct SMT2 {
     predicates: Vec<Predicate2>,
 }
 
@@ -72,7 +73,7 @@ enum Predicate2 {
 }
 
 #[derive(Debug, Clone)]
-struct SMT3 {
+pub struct SMT3 {
     cnf: Vec<Term>,
 }
 
@@ -118,9 +119,9 @@ impl CnfVar {
 }
 
 impl SMT {
-    pub fn solve(&self) -> Option<SMTResult> {
+    pub fn solve<T: SATSolver>(&self, solver: &T) -> Option<SMTResult> {
         let s = self.convert();
-        let res = s.solve();
+        let res = s.solve(solver);
         let Some(res) = res else { return None };
 
         let mut int_res = vec![];
@@ -153,7 +154,7 @@ impl SMT {
             bool_vars: bool_res,
         })
     }
-    fn convert(&self) -> SMT2 {
+    pub fn convert(&self) -> SMT2 {
         let mut res = vec![];
         for predicate in &self.predicates {
             let p = self.convert_predicate(predicate);
@@ -394,11 +395,11 @@ impl IDGen {
 }
 
 impl SMT2 {
-    fn solve(&self) -> Option<Vec<CnfVar>> {
+    fn solve<T: SATSolver>(&self, solver: &T) -> Option<Vec<CnfVar>> {
         let s = self.convert();
-        s.solve()
+        s.solve(solver)
     }
-    fn convert(&self) -> SMT3 {
+    pub fn convert(&self) -> SMT3 {
         let mut idgen = IDGen::default();
         let cnf = self
             .predicates
@@ -466,7 +467,7 @@ impl SMT2 {
 
 use crate::sat;
 impl SMT3 {
-    fn convert(&self) -> (String, Vec<ID>) {
+    pub fn convert(&self) -> (String, Vec<ID>) {
         let mut vars = vec![];
         let mut res = String::new();
         for cnf in &self.cnf {
@@ -489,8 +490,7 @@ impl SMT3 {
         }
         (res, vars)
     }
-    fn solve(&self) -> Option<Vec<CnfVar>> {
-        let solver = sat::SatSolver::new();
+    fn solve<T: SATSolver>(&self, solver: &T) -> Option<Vec<CnfVar>> {
         let (str, map) = self.convert();
         let cnf = sat::Sat::try_from(str.as_str()).unwrap();
         let res = solver.solve(&cnf);
@@ -868,6 +868,8 @@ impl FromStr for SExpr {
 
 #[cfg(test)]
 mod test {
+    use crate::cdcl;
+
     use super::*;
     #[test]
     fn smt() {
@@ -881,8 +883,10 @@ mod test {
             let cnf = c3.convert();
             print!("# cnf:\n{}", cnf.0);
             print!("# vars:\n{:?}", cnf.1);
-            let res = res.solve();
+            let solver = &cdcl::CDCLSolver::new();
+            let res = res.solve(solver);
             print!("# result:\n {:?}", res);
+            assert!(res.is_some());
         }
         smt_test("(int x 0 3) (bool y) (? (var y))");
         smt_test("(int x 0 3) (int y 1 4) (? (eq (var x) (var y)))");
@@ -929,7 +933,8 @@ mod test {
                 },
             ],
         };
-        dbg!(s.solve());
+        let solver = &sat::DPLLSolver::new();
+        dbg!(s.solve(solver));
     }
 
     #[test]
@@ -944,7 +949,8 @@ mod test {
                 },
             ],
         };
-        dbg!(s.solve());
+        let solver = &sat::DPLLSolver::new();
+        dbg!(s.solve(solver));
     }
     #[test]
     fn read_smt() {

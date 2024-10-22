@@ -1,18 +1,27 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
+
+pub trait SATSolver {
+    fn solve(&self, sat: &Sat) -> Option<SatResult>;
+}
 
 #[derive(Debug, Clone)]
-pub struct SatSolver {}
-impl SatSolver {
-    pub fn new() -> Self {
-        SatSolver {}
-    }
-    pub fn solve(&self, sat: &Sat) -> Option<SatResult> {
+pub struct DPLLSolver {}
+impl SATSolver for DPLLSolver {
+    fn solve(&self, sat: &Sat) -> Option<SatResult> {
         let Some(mut assign) = self.solve_assign(sat) else {
             return None;
         };
         let vars = sat.vars();
         assign.extend_unused(vars);
         Some(assign)
+    }
+}
+impl DPLLSolver {
+    pub fn new() -> Self {
+        DPLLSolver {}
     }
     fn solve_assign(&self, sat: &Sat) -> Option<SatResult> {
         let mut assignment = SatResult::default();
@@ -89,7 +98,7 @@ pub struct SatResult {
     pub assignment: Vec<Var>,
 }
 impl SatResult {
-    fn new(assignment: Vec<Var>) -> Self {
+    pub fn new(assignment: Vec<Var>) -> Self {
         SatResult { assignment }
     }
     fn push_ok(&mut self, var: Var) -> Result<Var, bool> {
@@ -135,7 +144,7 @@ impl Default for SatResult {
 
 #[derive(Debug, Clone)]
 pub struct Sat {
-    predicates: Vec<Cnf>,
+    pub predicates: Vec<Cnf>,
 }
 impl Sat {
     fn is_empty(&self) -> bool {
@@ -144,7 +153,7 @@ impl Sat {
     fn has_empty_clause(&self) -> bool {
         self.predicates.iter().any(|cnf| cnf.is_empty())
     }
-    fn push(&mut self, cnf: Cnf) {
+    pub fn push(&mut self, cnf: Cnf) {
         self.predicates.push(cnf);
     }
     fn remove_var(&self, var: Var) -> Self {
@@ -178,7 +187,7 @@ impl Sat {
         res
     }
 
-    fn vars(&self) -> Vec<Var> {
+    pub fn vars(&self) -> Vec<Var> {
         let mut res = Vec::new();
         for cnf in &self.predicates {
             for var in &cnf.clauses {
@@ -205,6 +214,17 @@ impl Sat {
         }
         (lines, ids.len())
     }
+
+    pub fn tally(&self) -> Vec<(Var, usize)> {
+        let mut res = HashMap::new();
+        for cnf in &self.predicates {
+            for var in &cnf.clauses {
+                let count = res.entry(*var).or_insert(0);
+                *count += 1;
+            }
+        }
+        res.iter().map(|(k, v)| (*k, *v)).collect()
+    }
 }
 impl Default for Sat {
     fn default() -> Self {
@@ -215,8 +235,8 @@ impl Default for Sat {
 }
 
 #[derive(Debug, Clone)]
-struct Cnf {
-    clauses: Vec<Var>,
+pub struct Cnf {
+    pub clauses: Vec<Var>,
 }
 impl Cnf {
     fn is_empty(&self) -> bool {
@@ -232,7 +252,7 @@ impl Cnf {
             None
         }
     }
-    fn remove_var(&self, var: Var) -> Option<Self> {
+    pub fn remove_var(&self, var: Var) -> Option<Self> {
         if self.include(var) {
             return None;
         }
@@ -244,12 +264,41 @@ impl Cnf {
             .collect();
         Some(Cnf { clauses })
     }
-    fn include(&self, var: Var) -> bool {
+    pub fn drop_var(&self, var: Var) -> Option<Self> {
+        if !self.include(var) {
+            return None;
+        }
+        let clauses = self
+            .clauses
+            .iter()
+            .filter(|v| v != &&var)
+            .cloned()
+            .collect();
+        Some(Cnf { clauses })
+    }
+    pub fn include(&self, var: Var) -> bool {
         self.clauses.contains(&var)
+    }
+    pub fn extend(&mut self, other: &Cnf) {
+        self.clauses.extend(&other.clauses);
+    }
+
+    pub fn satisfied_by(&self, determined_vars: &[Var]) -> bool {
+        for var in &self.clauses {
+            if determined_vars.contains(var) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn dedup(&mut self) {
+        self.clauses.sort();
+        self.clauses.dedup();
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Var {
     Pos(usize),
     Neg(usize),
@@ -268,13 +317,13 @@ impl Var {
         }
         Var::Neg(i)
     }
-    fn invert(&self) -> Self {
+    pub fn invert(&self) -> Self {
         match self {
             Var::Pos(i) => Var::neg(*i),
             Var::Neg(i) => Var::pos(*i),
         }
     }
-    fn id(self) -> usize {
+    pub fn id(self) -> usize {
         match self {
             Var::Pos(i) => i,
             Var::Neg(i) => i,
@@ -386,7 +435,7 @@ mod test {
     use super::*;
     #[test]
     fn test_solver() {
-        let solver = SatSolver {};
+        let solver = DPLLSolver {};
         let input = "1 -1 -3 0 -2 2 -3 0";
         let sat = Sat::try_from(input).unwrap();
         let result = solver.solve(&sat);
@@ -398,7 +447,7 @@ mod test {
     }
     #[test]
     fn test_solver2() {
-        let solver = SatSolver {};
+        let solver = DPLLSolver {};
         let input = "-1 -2 -3 0
 2 5 -3 0
 1 -6 -3 0

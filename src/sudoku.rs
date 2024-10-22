@@ -1,4 +1,7 @@
-use crate::smt::SMT;
+use crate::{
+    sat::SATSolver,
+    smt::{SMTResult, SMT},
+};
 use std::{cell, vec};
 
 #[derive(Debug, Clone)]
@@ -24,22 +27,34 @@ impl Sudoku {
             cell_height,
         }
     }
-    pub fn solve(&self) -> Option<Sudoku> {
+    pub fn solve<T: SATSolver>(&self, solver: &T) -> Option<Sudoku> {
         let smt = self.convert();
         let smt = SMT::parse(&smt).unwrap();
-        let Some(res) = smt.solve() else {
+        let smt1 = smt.convert();
+        let smt2 = smt.convert().convert();
+        let (sat, vars) = smt.convert().convert().convert();
+        println!("==== smt:\n {}", smt);
+        println!("==== smt1:\n {}", smt1);
+        println!("==== smt2:\n {}", smt2);
+        println!("=== sat: {}", sat);
+        println!("vars: {:?}", vars);
+
+        let Some(res) = smt.solve(solver) else {
             return None;
         };
+        Some(self.remap(&res))
+    }
+    fn remap(&self, result: &SMTResult) -> Sudoku {
         let size = self.cell_width * self.cell_height;
         let mut board = self.clone();
         for y in 0..size {
             for x in 0..size {
                 let var = format!("b_{}_{}", x, y);
-                let val = res.vars.iter().find(|(k, _)| k == &var).unwrap().1;
+                let val = result.vars.iter().find(|(k, _)| k == &var).unwrap().1;
                 board.board[y][x] = val;
             }
         }
-        Some(board)
+        board
     }
     fn convert(&self) -> String {
         let max_num = self.cell_width * self.cell_height;
@@ -100,7 +115,7 @@ impl std::fmt::Display for Sudoku {
         let size = self.cell_width * self.cell_height;
         for y in 0..size {
             for x in 0..size {
-                write!(f, "{}", self.board[y][x])?;
+                write!(f, "{}", self.board[x][y])?;
                 if x != size - 1 {
                     write!(f, " ")?;
                 }
@@ -118,6 +133,15 @@ mod test {
     fn test_sudoku() {
         let mut sudoku = Sudoku::empty(1, 2);
         sudoku.board[0][0] = 2;
-        println!("{}", sudoku.solve().unwrap());
+        let solver = &crate::sat::DPLLSolver::new();
+        println!("{}", sudoku.solve(solver).unwrap());
+    }
+    use super::*;
+    #[test]
+    fn test_sudoku_cdcl() {
+        let mut sudoku = Sudoku::empty(2, 2);
+        sudoku.board[0][0] = 2;
+        let solver = &crate::cdcl::CDCLSolver::new();
+        println!("{}", sudoku.solve(solver).unwrap());
     }
 }
